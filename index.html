@@ -250,20 +250,21 @@ canvas{display:block;width:100%}
 <div class="setting-overlay" id="setting-overlay" style="display:none" onclick="if(event.target===this)tutupSettings()">
   <div class="setting-sheet">
     <div class="setting-title">&#x2699;&#xFE0F; Pengaturan</div>
-    <div class="setting-desc">Scan struk menggunakan OCR gratis di HP Anda. Tidak perlu API key apapun.</div>
+    <div class="setting-desc">Groq AI gratis untuk parsing item struk. Daftar di <strong>console.groq.com</strong> &rarr; Create API Key.</div>
+    <div class="setting-label">Groq API Key</div>
+    <input type="text" class="setting-inp" id="groq-inp" placeholder="gsk_..." autocomplete="off">
     <div class="setting-label">Web App URL (GAS)</div>
     <input type="text" class="setting-inp" id="gas-inp" placeholder="https://script.google.com/macros/s/.../exec">
     <button class="btn-setting-save" onclick="simpanSettings()">Simpan</button>
   </div>
-</div>
-
-<div class="toast" id="toast"></div>
+  </div>
+  <div class="toast" id="toast"></div>
 
 <script>
 // =====================================================================
 //  KONFIGURASI — ganti URL ini dengan Web App URL dari Fase 2
 // =====================================================================
-var GAS = 'https://script.google.com/macros/s/AKfycbx-MldNeG6k_g80j3kFzh7UcLR8QEpxauVoyuvHVu8tsle8lw4_tlP0vEgJJXrS6YD2/exec';
+var GAS = 'GANTI_DENGAN_WEB_APP_URL_DARI_FASE_2';
 
 var txns = JSON.parse(localStorage.getItem('dompet_txn')  || '[]');
 var ring = JSON.parse(localStorage.getItem('dompet_ring') || 'null')
@@ -297,6 +298,8 @@ document.getElementById('inp').addEventListener('input', function(){
   this.style.height=Math.min(this.scrollHeight,120)+'px';
 });
 
+var GROQ_KEY = localStorage.getItem('groq_key') || '';
+var savedGAS2 = localStorage.getItem('gas_url'); if(savedGAS2&&savedGAS2.length>10)GAS=savedGAS2;
 renderAll();
 syncGAS();
 
@@ -620,15 +623,18 @@ function refreshOnline(){var el=document.getElementById('online-lbl'),on=navigat
 // =====================================================================
 //  SETTINGS — GAS URL saja (Gemini dihapus, pakai Tesseract OCR gratis)
 // =====================================================================
-var GROQ_KEY = localStorage.getItem('groq_key') || '';
-var savedGAS = localStorage.getItem('gas_url');
 if (savedGAS && savedGAS.length > 10) GAS = savedGAS;
 
 function bukaSettings() {
-  document.getElementById('groq-inp').value = GROQ_KEY;
-  document.getElementById('gas-inp').value  = GAS;
+  var gi = document.getElementById('groq-inp');
+  var ga = document.getElementById('gas-inp');
+  if (gi) gi.value = GROQ_KEY || '';
+  if (ga) ga.value = GAS || '';
   document.getElementById('setting-overlay').style.display = 'flex';
-  setTimeout(function(){ document.getElementById('groq-inp').focus(); }, 100);
+  setTimeout(function(){
+    var f = document.getElementById('groq-inp') || document.getElementById('gas-inp');
+    if (f) f.focus();
+  }, 100);
 }
 function tutupSettings() {
   document.getElementById('setting-overlay').style.display = 'none';
