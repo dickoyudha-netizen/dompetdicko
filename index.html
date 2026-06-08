@@ -119,6 +119,12 @@ canvas{display:block;width:100%}
 .si-kat:focus{border-color:var(--hijau)}
 .si-harga{font-size:13px;font-weight:600;color:var(--merah);white-space:nowrap}
 
+
+/* ── FILTER BAR ───────────────────────────────────────────────── */
+.filter-bar{display:flex;gap:8px;margin:10px 14px 0}
+.filter-sel{flex:1;border:1.5px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;font-size:12px;font-family:inherit;background:var(--card);color:var(--teks);outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;min-width:0}
+.filter-sel:focus{border-color:var(--hijau)}
+.filter-count{font-size:11px;color:var(--redup);text-align:right;margin:6px 14px 0}
 </style>
 </head>
 <body>
@@ -179,24 +185,51 @@ canvas{display:block;width:100%}
 </div>
 
 <div class="view" id="v-riwayat">
-  <div class="section">
-    <div class="section-title">Semua transaksi</div>
+  <div class="filter-bar">
+    <select class="filter-sel" id="f-kat" onchange="renderFull()">
+    <option value="">&#x1F5C2; Semua Kategori</option>
+    <option>Konsumsi</option><option>Transportasi</option><option>Tagihan</option>
+    <option>Belanja</option><option>Hiburan</option><option>Kesehatan</option>
+    <option>Pendidikan</option><option>Gaji</option><option>Investasi</option>
+    <option>Bisnis</option><option>Lainnya</option>
+    </select>
+    <select class="filter-sel" id="f-bln" onchange="renderFull()">
+      <option value="">&#x1F4C5; Semua Bulan</option>
+    </select>
+  </div>
+  <div class="filter-count" id="f-count"></div>
+  <div class="section" style="margin-top:8px">
     <div class="card" id="list-all"></div>
   </div>
 </div>
 
 <div class="view" id="v-dashboard">
-  <div class="metrics">
+  <div class="filter-bar" style="margin-top:14px">
+    <select class="filter-sel" id="d-kat" onchange="renderDashboard();drawChart()">
+      <option value="">&#x1F5C2; Semua Kategori</option>
+      <option>Konsumsi</option><option>Transportasi</option><option>Tagihan</option>
+      <option>Belanja</option><option>Hiburan</option><option>Kesehatan</option>
+      <option>Pendidikan</option><option>Gaji</option><option>Investasi</option>
+      <option>Bisnis</option><option>Lainnya</option>
+    </select>
+    <select class="filter-sel" id="d-per" onchange="renderDashboard();drawChart()">
+      <option value="bulan">Bulan Ini</option>
+      <option value="hari">Hari Ini</option>
+      <option value="tahun">Tahun Ini</option>
+      <option value="semua">Semua Waktu</option>
+    </select>
+  </div>
+  <div class="metrics" style="margin-top:10px">
     <div class="metric span2">
-      <div class="metric-lbl">Saldo Saat Ini</div>
+      <div class="metric-lbl">Saldo (semua waktu)</div>
       <div class="metric-val" id="d-saldo">&#x2014;</div>
     </div>
     <div class="metric">
-      <div class="metric-lbl">&#x1F4E5; Masuk Bulan Ini</div>
+      <div class="metric-lbl">&#x1F4E5; Pemasukan</div>
       <div class="metric-val c-in" id="d-masuk">&#x2014;</div>
     </div>
     <div class="metric">
-      <div class="metric-lbl">&#x1F4E4; Keluar Bulan Ini</div>
+      <div class="metric-lbl">&#x1F4E4; Pengeluaran</div>
       <div class="metric-val c-out" id="d-keluar">&#x2014;</div>
     </div>
   </div>
@@ -261,10 +294,16 @@ canvas{display:block;width:100%}
   <div class="toast" id="toast"></div>
 
 <script>
+// ╔══════════════════════════════════════════════════════════╗
+// ║  KONFIGURASI — edit dua baris di bawah ini               ║
+// ╚══════════════════════════════════════════════════════════╝
+var GAS      = 'https://script.google.com/macros/s/AKfycbx-MldNeG6k_g80j3kFzh7UcLR8QEpxauVoyuvHVu8tsle8lw4_tlP0vEgJJXrS6YD2/exec';
+var GROQ_KEY = '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';
+// ────────────────────────────────────────────────────────────
+
 // =====================================================================
 //  KONFIGURASI — ganti URL ini dengan Web App URL dari Fase 2
 // =====================================================================
-var GAS = 'GANTI_DENGAN_WEB_APP_URL_DARI_FASE_2';
 
 var txns = JSON.parse(localStorage.getItem('dompet_txn')  || '[]');
 var ring = JSON.parse(localStorage.getItem('dompet_ring') || 'null')
@@ -298,8 +337,6 @@ document.getElementById('inp').addEventListener('input', function(){
   this.style.height=Math.min(this.scrollHeight,120)+'px';
 });
 
-var GROQ_KEY = localStorage.getItem('groq_key') || '';
-var savedGAS2 = localStorage.getItem('gas_url'); if(savedGAS2&&savedGAS2.length>10)GAS=savedGAS2;
 renderAll();
 syncGAS();
 
@@ -425,6 +462,77 @@ function syncGAS(){
   }).catch(function(){});
 }
 
+
+// ── SORT & FILTER HELPERS ────────────────────────────────────────
+
+// Konversi tanggal dd/MM/yyyy → timestamp (ms) untuk sorting
+function tglMs(tgl) {
+  if (!tgl) return 0;
+  var p = parseTgl(tgl); // dd/MM/yyyy → yyyy-MM-dd
+  return p ? new Date(p).getTime() : 0;
+}
+
+// Sort transaksi terbaru (tanggal) di atas
+function sortTxns(arr) {
+  return arr.slice().sort(function(a, b) {
+    return tglMs(b.tanggal) - tglMs(a.tanggal);
+  });
+}
+
+// Filter untuk riwayat: kategori + bulan (yyyy-MM)
+function filterRiwayat(arr) {
+  var kat = (document.getElementById('f-kat') && document.getElementById('f-kat').value) || '';
+  var bln = (document.getElementById('f-bln') && document.getElementById('f-bln').value) || '';
+  return arr.filter(function(t) {
+    if (kat && t.kategori !== kat) return false;
+    if (bln) {
+      var p = parseTgl(t.tanggal);
+      if (p && p.slice(0,7) !== bln) return false;
+    }
+    return true;
+  });
+}
+
+// Filter untuk dashboard: kategori + periode
+function filterDashboard(arr) {
+  var kat = (document.getElementById('d-kat') && document.getElementById('d-kat').value) || '';
+  var per = (document.getElementById('d-per') && document.getElementById('d-per').value) || 'bulan';
+  var now = new Date();
+  return arr.filter(function(t) {
+    if (kat && t.kategori !== kat) return false;
+    if (per === 'semua') return true;
+    var p = parseTgl(t.tanggal);
+    if (!p) return true;
+    var d = new Date(p);
+    if (per === 'hari')  return d.toDateString() === now.toDateString();
+    if (per === 'bulan') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    if (per === 'tahun') return d.getFullYear() === now.getFullYear();
+    return true;
+  });
+}
+
+// Isi dropdown bulan dari data transaksi yang ada
+function isiFilterBulan() {
+  var sel = document.getElementById('f-bln');
+  if (!sel) return;
+  var map = {};
+  txns.forEach(function(t) {
+    var p = parseTgl(t.tanggal);
+    if (!p) return;
+    var key = p.slice(0,7);
+    var d = new Date(p);
+    map[key] = d.toLocaleDateString('id-ID', {month:'long', year:'numeric'});
+  });
+  var saved = sel.value;
+  var opts = '<option value="">&#x1F4C5; Semua Bulan</option>';
+  Object.keys(map).sort().reverse().forEach(function(k) {
+    opts += '<option value="' + k + '">' + map[k] + '</option>';
+  });
+  sel.innerHTML = opts;
+  if (saved) sel.value = saved;
+}
+
+
 // ── RENDER ────────────────────────────────────────────────────────
 function renderAll(){renderRecent();renderFullList();renderSaldo();}
 
@@ -434,11 +542,15 @@ function renderSaldo(){
   el.textContent=fmtRp(s);
   el.style.color=s<0?'#FFCDD2':'white';
 }
-function renderRecent(){
-  renderList('list-recent',txns.slice(0,6),'Belum ada transaksi.<br>Coba ketik di atas!',true);
+function renderRecent() {
+  renderList('list-recent', sortTxns(txns).slice(0, 6), 'Belum ada transaksi.<br>Coba ketik di atas!', true);
 }
-function renderFull(){
-  renderList('list-all',txns,'Belum ada transaksi',false);
+function renderFull() {
+  isiFilterBulan();
+  var hasil = filterRiwayat(sortTxns(txns));
+  var cnt = document.getElementById('f-count');
+  if (cnt) cnt.textContent = hasil.length + ' transaksi' + (hasil.length < txns.length ? ' (difilter dari ' + txns.length + ')' : '');
+  renderList('list-all', hasil, 'Tidak ada transaksi yang sesuai filter', true);
 }
 function renderFullList(){
   renderList('list-all',txns,'Belum ada transaksi',false);
@@ -453,25 +565,54 @@ function renderList(id,data,emptyMsg,showActions){
   }
   el.innerHTML=data.map(function(t){return txnHTML(t,showActions);}).join('');
 }
-function renderDashboard(){
-  document.getElementById('d-saldo').textContent  = fmtRp(ring.saldo||0);
-  document.getElementById('d-masuk').textContent  = fmtRp((ring.bulanIni&&ring.bulanIni.masuk)||0);
-  document.getElementById('d-keluar').textContent = fmtRp((ring.bulanIni&&ring.bulanIni.keluar)||0);
-  var kat=ring.perKategori||{};
-  var list=Object.keys(kat).map(function(k){return[k,kat[k]];})
-    .filter(function(x){return x[1]>0;})
-    .sort(function(a,b){return b[1]-a[1];}).slice(0,7);
-  var maxV=list.length?list[0][1]:1;
-  var el=document.getElementById('kat-bars');
-  if(!list.length){
-    el.innerHTML='<div style="color:var(--redup);font-size:13px;text-align:center;padding:10px 0">Belum ada pengeluaran bulan ini</div>';
+function renderDashboard() {
+  // Hitung langsung dari txns yang sudah difilter (bukan dari ring GAS)
+  var filtered   = filterDashboard(txns);
+  var allTxns    = txns; // saldo selalu semua waktu
+
+  // Saldo = semua waktu, tidak dipengaruhi filter
+  var saldo = allTxns.reduce(function(s,t){ return s + (t.jenis==='Pemasukan'?t.nominal:-t.nominal); }, 0);
+  document.getElementById('d-saldo').textContent  = fmtRp(saldo);
+
+  // Masuk & keluar sesuai filter aktif
+  var masuk  = 0, keluar = 0;
+  var perKat = {};
+  filtered.forEach(function(t) {
+    if (t.jenis === 'Pemasukan') masuk  += t.nominal || 0;
+    else {
+      keluar += t.nominal || 0;
+      var k = t.kategori || 'Lainnya';
+      perKat[k] = (perKat[k] || 0) + (t.nominal || 0);
+    }
+  });
+  document.getElementById('d-masuk').textContent  = fmtRp(masuk);
+  document.getElementById('d-keluar').textContent = fmtRp(keluar);
+
+  // Label periode di header metrik
+  var per = (document.getElementById('d-per') && document.getElementById('d-per').value) || 'bulan';
+  var periodeLabel = {hari:'Hari Ini', bulan:'Bulan Ini', tahun:'Tahun Ini', semua:'Semua Waktu'};
+  var lbl = periodeLabel[per] || '';
+  var m = document.querySelector('#d-masuk').previousElementSibling;
+  var k2 = document.querySelector('#d-keluar').previousElementSibling;
+  if (m)  m.textContent  = '\uD83D\uDCE5 Pemasukan ' + lbl;
+  if (k2) k2.textContent = '\uD83D\uDCE4 Pengeluaran ' + lbl;
+
+  // Kategori breakdown
+  var list = Object.keys(perKat).map(function(k){ return [k, perKat[k]]; })
+    .filter(function(x){ return x[1] > 0; })
+    .sort(function(a,b){ return b[1]-a[1]; }).slice(0,7);
+  var maxV = list.length ? list[0][1] : 1;
+  var el = document.getElementById('kat-bars');
+  if (!list.length) {
+    el.innerHTML = '<div style="color:var(--redup);font-size:13px;text-align:center;padding:10px 0">Belum ada pengeluaran</div>';
   } else {
-    el.innerHTML=list.map(function(item){
-      var pct=Math.round(item[1]/maxV*100);
+    el.innerHTML = list.map(function(item) {
+      var pct = Math.round(item[1]/maxV*100);
       return '<div class="kat-item"><div class="kat-row"><span class="kat-name">'+item[0]+'</span><span class="kat-val">'+fmtRp(item[1])+'</span></div><div class="bar-bg"><div class="bar-fg" style="width:'+pct+'%"></div></div></div>';
     }).join('');
   }
-  renderList('list-dash',txns.slice(0,8),'',false);
+
+  renderList('list-dash', sortTxns(filtered).slice(0, 8), '', false);
   renderForecast();
 }
 
